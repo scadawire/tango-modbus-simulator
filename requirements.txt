@@ -1,2 +1,2 @@
 pytango==9.3.6
-pymodbus==3.9.1
+pymodbus==2.5.3
