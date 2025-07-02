@@ -44,9 +44,9 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
         )
         # Define the Modbus server context
         server_context = ModbusServerContext(slaves=slave_context, single=True)
+        self.set_state(DevState.ON)
         # Start the Modbus TCP server
         StartTcpServer(context=server_context, address=(self.host, self.port))
-        self.set_state(DevState.ON)
 
 if __name__ == "__main__":
     deviceServerName = os.getenv("DEVICE_SERVER_NAME", "ModbusSimulator")
