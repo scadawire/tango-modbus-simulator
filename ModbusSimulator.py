@@ -7,6 +7,8 @@ import json
 from json import JSONDecodeError
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
 from pymodbus.server.sync import StartTcpServer
+from pymodbus.server.sync import StartSerialServer
+from pymodbus.transaction import ModbusRtuFramer
 import random
 import logging
 
@@ -14,6 +16,12 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
     pass
     host = device_property(dtype=str, default_value="127.0.0.1")
     port = device_property(dtype=int, default_value=48123)
+    protocol = device_property(dtype=str, default_value="tcp")  # "tcp" or "rtu"
+    serial_port = device_property(dtype=str, default_value="/dev/ttyUSB0")
+    baudrate = device_property(dtype=int, default_value=9600)
+    parity = device_property(dtype=str, default_value="N")  # N, E, O
+    stopbits = device_property(dtype=int, default_value=1)
+    bytesize = device_property(dtype=int, default_value=8)
 
     @attribute
     def time(self):
@@ -45,8 +53,23 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
         # Define the Modbus server context
         server_context = ModbusServerContext(slaves=slave_context, single=True)
         self.set_state(DevState.ON)
-        # Start the Modbus TCP server
-        StartTcpServer(context=server_context, address=(self.host, self.port))
+        # Start the Modbus TCP serverif self.mode.lower() == "tcp":
+        if self.mode.lower() == "tcp":
+            StartTcpServer(
+                context=server_context,
+                address=(self.host, self.port)
+            )
+        elif self.mode.lower() == "rtu":
+            StartSerialServer(
+                context=server_context,
+                framer=ModbusRtuFramer,
+                port=self.serial_port,
+                baudrate=self.baudrate,
+                parity=self.parity,
+                stopbits=self.stopbits,
+                bytesize=self.bytesize,
+                timeout=1
+            )
 
 if __name__ == "__main__":
     deviceServerName = os.getenv("DEVICE_SERVER_NAME", "ModbusSimulator")
