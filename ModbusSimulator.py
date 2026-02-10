@@ -6,14 +6,14 @@ import os
 import json
 from json import JSONDecodeError
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
-from pymodbus.server.sync import StartTcpServer
-from pymodbus.server.sync import StartSerialServer
+from pymodbus.server.sync import ModbusTcpServer, StartSerialServer
 from pymodbus.transaction import ModbusRtuFramer
 import random
 import logging
+import threading
 
 class ModbusSimulator(Device, metaclass=DeviceMeta):
-    pass
+
     host = device_property(dtype=str, default_value="127.0.0.1")
     port = device_property(dtype=int, default_value=48123)
     protocol = device_property(dtype=str, default_value="tcp")  # "tcp" or "rtu"
@@ -23,6 +23,9 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
     stopbits = device_property(dtype=int, default_value=1)
     bytesize = device_property(dtype=int, default_value=8)
 
+    _server = None
+    _server_thread = None
+
     @attribute
     def time(self):
         return time.time()
@@ -30,12 +33,12 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
     def init_device(self):
         self.set_state(DevState.INIT)
         self.get_device_properties(self.get_device_class())
+        self._stop_server()
 
-        # Enable logging (makes it easier to debug if something goes wrong)
         logging.basicConfig()
         log = logging.getLogger()
         log.setLevel(logging.DEBUG)
-        # Define the Modbus registers
+
         coils = ModbusSequentialDataBlock(1, [False] * 100)
         discrete_inputs = ModbusSequentialDataBlock(1, [False] * 100)
         holding_registers = ModbusSequentialDataBlock(1, [0] * 100)
@@ -43,23 +46,27 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
         temperature_values = [random.randint(4, 15) for _ in range(7)]
         holding_registers.setValues(1, temperature_values)
         print("temperature_values:", temperature_values)
-        # Define the Modbus slave context
+
         slave_context = ModbusSlaveContext(
             di=discrete_inputs,
             co=coils,
             hr=holding_registers,
             ir=input_registers
         )
-        # Define the Modbus server context
         server_context = ModbusServerContext(slaves=slave_context, single=True)
-        self.set_state(DevState.ON)
-        # Start the Modbus TCP serverif self.mode.lower() == "tcp":
-        if self.mode.lower() == "tcp":
-            StartTcpServer(
-                context=server_context,
-                address=(self.host, self.port)
+
+        if self.protocol.lower() == "tcp":
+            ModbusTcpServer.allow_reuse_address = True
+            self._server = ModbusTcpServer(
+                server_context,
+                address=(self.host, self.port),
             )
-        elif self.mode.lower() == "rtu":
+            self._server_thread = threading.Thread(
+                target=self._server.serve_forever, daemon=True,
+            )
+            self._server_thread.start()
+            self.info_stream(f"Modbus TCP server started on {self.host}:{self.port}")
+        elif self.protocol.lower() == "rtu":
             StartSerialServer(
                 context=server_context,
                 framer=ModbusRtuFramer,
@@ -70,6 +77,21 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
                 bytesize=self.bytesize,
                 timeout=1
             )
+
+        self.set_state(DevState.ON)
+
+    def _stop_server(self):
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+            self._server = None
+        if self._server_thread is not None:
+            self._server_thread.join(timeout=5)
+            self._server_thread = None
+
+    def delete_device(self):
+        self._stop_server()
+        self.info_stream("Modbus server stopped")
 
 if __name__ == "__main__":
     deviceServerName = os.getenv("DEVICE_SERVER_NAME", "ModbusSimulator")
