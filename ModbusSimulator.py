@@ -6,7 +6,7 @@ import os
 import json
 from json import JSONDecodeError
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
-from pymodbus.server.sync import ModbusTcpServer, StartSerialServer
+from pymodbus.server.sync import ModbusTcpServer, ModbusSerialServer
 from pymodbus.transaction import ModbusRtuFramer
 import random
 import logging
@@ -67,8 +67,10 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
             self._server_thread.start()
             self.info_stream(f"Modbus TCP server started on {self.host}:{self.port}")
         elif self.protocol.lower() == "rtu":
-            StartSerialServer(
-                context=server_context,
+            # the serial server opens the port in its constructor and then blocks in serve_forever,
+            # so it has to run in a thread: init_device must return for the device to be exported
+            self._server = ModbusSerialServer(
+                server_context,
                 framer=ModbusRtuFramer,
                 port=self.serial_port,
                 baudrate=self.baudrate,
@@ -77,12 +79,20 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
                 bytesize=self.bytesize,
                 timeout=1
             )
+            self._server_thread = threading.Thread(
+                target=self._server.serve_forever, daemon=True,
+            )
+            self._server_thread.start()
+            self.info_stream(f"Modbus RTU server started on {self.serial_port}")
 
         self.set_state(DevState.ON)
 
     def _stop_server(self):
         if self._server is not None:
-            self._server.shutdown()
+            # only the tcp server is socketserver based and has shutdown(), the serial one stops
+            # serving once is_running is cleared by server_close()
+            if hasattr(self._server, "shutdown"):
+                self._server.shutdown()
             self._server.server_close()
             self._server = None
         if self._server_thread is not None:
