@@ -56,10 +56,14 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
         server_context = ModbusServerContext(slaves=slave_context, single=True)
 
         if self.protocol.lower() == "tcp":
-            ModbusTcpServer.allow_reuse_address = True
+            # allow_reuse_address has to be passed to the constructor: it assigns the argument
+            # (default False) to the instance, so setting the class attribute has no effect. Without
+            # it a restart fails with "address already in use" for as long as the connections of the
+            # previous run linger in TIME_WAIT.
             self._server = ModbusTcpServer(
                 server_context,
                 address=(self.host, self.port),
+                allow_reuse_address=True,
             )
             self._server_thread = threading.Thread(
                 target=self._server.serve_forever, daemon=True,
