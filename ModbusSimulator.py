@@ -69,7 +69,7 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
                 target=self._server.serve_forever, daemon=True,
             )
             self._server_thread.start()
-            self.info_stream(f"Modbus TCP server started on {self.host}:{self.port}")
+            self.info_stream("Modbus TCP server started on %s:%s", self.host, self.port)
         elif self.protocol.lower() == "rtu":
             # the serial server opens the port in its constructor and then blocks in serve_forever,
             # so it has to run in a thread: init_device must return for the device to be exported
@@ -87,7 +87,7 @@ class ModbusSimulator(Device, metaclass=DeviceMeta):
                 target=self._server.serve_forever, daemon=True,
             )
             self._server_thread.start()
-            self.info_stream(f"Modbus RTU server started on {self.serial_port}")
+            self.info_stream("Modbus RTU server started on %s", self.serial_port)
 
         self.set_state(DevState.ON)
 
